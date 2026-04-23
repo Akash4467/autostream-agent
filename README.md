@@ -31,8 +31,6 @@ streamlit run app.py
 python main.py
 ```
 
-Open **http://localhost:8501** in your browser.
-
 ---
 
 ## Quick Start (Docker)
