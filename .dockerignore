@@ -1,0 +1,46 @@
+# Python bytecode (explicit — avoids glob ambiguity that can match *.py source files)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test & coverage artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Secrets — never bake into image
+.env
+*.env.*
+!.env.example
+
+# Local lead data (mounted as a volume instead)
+leads.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs — REMOVED *.md so README.md stays in context (harmless, small file)
