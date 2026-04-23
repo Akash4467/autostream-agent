@@ -96,7 +96,7 @@ autostream-agent/
 
 ---
 
-## Architecture (~200 words)
+## Architecture
 
 ### Why LangGraph?
 
