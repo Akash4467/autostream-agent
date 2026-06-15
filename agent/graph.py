@@ -1,9 +1,3 @@
-"""
-agent/graph.py
-
-LangGraph conversational agent for AutoStream (RAG enabled)
-"""
-
 from __future__ import annotations
 
 import os
@@ -21,32 +15,47 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from langchain_community.vectorstores import Chroma
-
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
+from agent.rag import build_kb_context
 from tools.lead_capture import capture_lead, get_all_leads
 
-# ── Load ENV ───────────────────────────────────────────────
 load_dotenv()
 
 
-# ── LLM FACTORY ────────────────────────────────────────────
+# ── ✅ NEW: normalize helper ───────────────────────────────────────────────────
+def normalize_content(content):
+    """Normalize LLM output (Gemini/OpenAI/Anthropic) into a clean string."""
+
+    # Gemini dict response
+    if isinstance(content, dict):
+        if "text" in content:
+            return str(content["text"])
+        return str(content)
+
+    # List response
+    if isinstance(content, list):
+        return " ".join(normalize_content(c) for c in content)
+
+    # None
+    if content is None:
+        return ""
+
+    return str(content)
+
+
+# ── LLM factory ───────────────────────────────────────────────────────────────
 def _build_llm():
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    openai_key = os.getenv("OPENAI_API_KEY")
-    google_key = os.getenv("GOOGLE_API_KEY")
-
-    if anthropic_key:
+    if os.getenv("ANTHROPIC_API_KEY"):
         from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(model="claude-3-haiku-20240307", temperature=0.3)
+        return ChatAnthropic(model="claude-haiku-4-5", temperature=0.3)
 
-    if openai_key:
+    if os.getenv("OPENAI_API_KEY"):
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
-    if google_key:
+    if os.getenv("GOOGLE_API_KEY"):
         from langchain_google_genai import ChatGoogleGenerativeAI
+
+        # ✅ FIX: use valid model from your list
         return ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             temperature=0.3
@@ -55,7 +64,7 @@ def _build_llm():
     raise EnvironmentError("❌ No LLM API key found.")
 
 
-# ── STATE ──────────────────────────────────────────────────
+# ── Agent state ───────────────────────────────────────────────────────────────
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     intent: Optional[str]
@@ -66,112 +75,59 @@ class AgentState(TypedDict):
     lead_id: Optional[str]
 
 
-# ── INTENT CLASSIFIER ──────────────────────────────────────
-_HIGH_INTENT_KW = [
-    "buy", "purchase", "subscribe", "start",
-    "get started", "sign up", "upgrade"
-]
+# ── System prompt ─────────────────────────────────────────────────────────────
+_KB_CONTEXT = build_kb_context()
 
+_SYSTEM_PROMPT = f"""You are Alex, the AI sales assistant for AutoStream.
+
+Use only the knowledge base.
+
+{_KB_CONTEXT}
+"""
+
+
+# ── Intent classifier ─────────────────────────────────────────────────────────
+_HIGH_INTENT_KW = ["buy", "subscribe", "start", "upgrade"]
 _GREETING_KW = ["hi", "hello", "hey"]
 
 
 def classify_intent(text: str) -> str:
-    text = text.lower()
-    if any(k in text for k in _HIGH_INTENT_KW):
+    lower = text.lower()
+    if any(k in lower for k in _HIGH_INTENT_KW):
         return "high_intent"
-    if any(k in text for k in _GREETING_KW):
+    if any(k in lower for k in _GREETING_KW):
         return "greeting"
     return "product_inquiry"
 
 
-# ── RETRIEVER (FIXED + SAFE) ───────────────────────────────
-def get_retriever():
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2"
-    )
-
-    db = Chroma(
-        persist_directory="./chroma_db",
-        embedding_function=embeddings
-    )
-
-    return db.as_retriever(search_kwargs={"k": 3})
-
-
-# ── NORMALIZE OUTPUT ───────────────────────────────────────
-def normalize_output(content):
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, dict):
-        if "text" in content:
-            return normalize_output(content["text"])
-        return " ".join(normalize_output(v) for v in content.values())
-
-    if isinstance(content, list):
-        return " ".join(normalize_output(item) for item in content)
-
-    return str(content)
-
-
-# ── MAIN NODE ──────────────────────────────────────────────
+# ── Node ──────────────────────────────────────────────────────────────────────
 def respond(state: AgentState) -> AgentState:
     llm = _build_llm()
-    llm_tools = llm.bind_tools([capture_lead])
-
-    retriever = get_retriever()
+    llm_with_tools = llm.bind_tools([capture_lead])
 
     last_human = next(
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         None,
     )
+    intent = classify_intent(last_human.content) if last_human else "greeting"
 
-    user_input = last_human.content if last_human else ""
+    full_messages = [SystemMessage(content=_SYSTEM_PROMPT)] + list(state["messages"])
 
-    intent = classify_intent(user_input)
-
-    # 🔥 RAG retrieval
-    docs = retriever.invoke(user_input)
-    context = "\n\n".join([d.page_content for d in docs])
-
-    # 🔥 Dynamic prompt (NO _KB_CONTEXT)
-    system_prompt = f"""
-You are Alex, AI sales assistant for AutoStream.
-
-Rules:
-- Answer ONLY using the provided context
-- Be concise and helpful
-- Detect intent
-- Collect lead info (name → email → platform)
-- Call capture_lead ONLY when ready
-
-CONTEXT:
-{context}
-"""
-
-    messages = [SystemMessage(content=system_prompt)] + state["messages"]
-
-    response: AIMessage = llm_tools.invoke(messages)
-    response.content = normalize_output(response.content)
+    response: AIMessage = llm_with_tools.invoke(full_messages)
 
     new_messages: list[BaseMessage] = [response]
 
-    # ── Lead state ─────────────────
     lead_name = state.get("lead_name")
     lead_email = state.get("lead_email")
     lead_platform = state.get("lead_platform")
     lead_captured = state.get("lead_captured", False)
     lead_id = state.get("lead_id")
 
-    # ── Tool handling ──────────────
     if hasattr(response, "tool_calls") and response.tool_calls:
         for tc in response.tool_calls:
             if tc["name"] == "capture_lead":
                 args = tc["args"]
-
-                result = capture_lead.invoke(args)
+                tool_result = capture_lead.invoke(args)
 
                 lead_name = args.get("name", lead_name)
                 lead_email = args.get("email", lead_email)
@@ -183,22 +139,17 @@ CONTEXT:
                     lead_id = leads[-1].get("id")
 
                 new_messages.append(
-                    ToolMessage(
-                        content=str(result),
-                        tool_call_id=tc["id"]
-                    )
+                    ToolMessage(content=str(tool_result), tool_call_id=tc["id"])
                 )
 
-        followup_msgs = (
-            [SystemMessage(content=system_prompt)]
-            + state["messages"]
+        follow_up = (
+            [SystemMessage(content=_SYSTEM_PROMPT)]
+            + list(state["messages"])
             + new_messages
         )
 
-        final = llm.invoke(followup_msgs)
-        final.content = normalize_output(final.content)
-
-        new_messages.append(final)
+        final_response = llm.invoke(follow_up)
+        new_messages.append(final_response)
 
     return {
         "messages": new_messages,
@@ -211,7 +162,7 @@ CONTEXT:
     }
 
 
-# ── GRAPH ─────────────────────────────────────────────────
+# ── Graph ─────────────────────────────────────────────────────────────────────
 def _build_graph():
     builder = StateGraph(AgentState)
     builder.add_node("respond", respond)
@@ -223,17 +174,17 @@ def _build_graph():
 _graph = _build_graph()
 
 
-# ── API ───────────────────────────────────────────────────
+# ── Public API ────────────────────────────────────────────────────────────────
 def new_state() -> AgentState:
-    return {
-        "messages": [],
-        "intent": None,
-        "lead_name": None,
-        "lead_email": None,
-        "lead_platform": None,
-        "lead_captured": False,
-        "lead_id": None,
-    }
+    return AgentState(
+        messages=[],
+        intent=None,
+        lead_name=None,
+        lead_email=None,
+        lead_platform=None,
+        lead_captured=False,
+        lead_id=None,
+    )
 
 
 def chat(user_input: str, state: Optional[AgentState] = None):
@@ -241,17 +192,21 @@ def chat(user_input: str, state: Optional[AgentState] = None):
         state = new_state()
 
     state = dict(state)
-    state["messages"] = state["messages"] + [HumanMessage(content=user_input)]
+    state["messages"] = list(state["messages"]) + [
+        HumanMessage(content=user_input)
+    ]
 
-    updated = _graph.invoke(state)
+    updated_state: AgentState = _graph.invoke(state)
 
     reply = ""
-    for msg in reversed(updated["messages"]):
+
+    for msg in reversed(updated_state["messages"]):
         if isinstance(msg, AIMessage) and msg.content:
-            reply = normalize_output(msg.content)
+            # ✅ FIX: normalize content
+            reply = normalize_content(msg.content)
             break
 
     if not reply:
-        raise RuntimeError("No valid response from LLM")
+        raise RuntimeError("LLM failed to produce a valid response.")
 
-    return reply, updated
+    return reply, updated_state

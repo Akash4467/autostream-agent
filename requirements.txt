@@ -10,8 +10,6 @@ langchain-google-genai>=2.0.0
 # ── RAG / Vector DB ────────────────────────────────────────
 chromadb>=0.5.0
 langchain-community>=0.3.0
-langchain-huggingface>=0.0.3
-sentence-transformers==2.2.2  
 
 # ── UI ─────────────────────────────────────────────────────
 streamlit>=1.35.0

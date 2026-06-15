@@ -6,7 +6,6 @@ Streamlit UI for the AutoStream AI Agent.
 
 from __future__ import annotations
 import streamlit as st
-import html
 
 # ── Page config ─────────────────────────────────────────────
 st.set_page_config(
@@ -70,7 +69,7 @@ if "processing" not in st.session_state:
     st.session_state.processing = False
 
 
-# ── Normalize LLM output (ROBUST) ───────────────────────────
+# ── Normalize LLM output ────────────────────────────────────
 def normalize_text(content):
     if isinstance(content, str):
         return content
@@ -89,15 +88,9 @@ def normalize_text(content):
     return str(content)
 
 
-# ── Escape HTML safely ──────────────────────────────────────
-def safe_text(text):
-    text = normalize_text(text)
-    return html.escape(text).replace("\n", "<br>")
-
-
 # ── Chat bubble UI ──────────────────────────────────────────
 def render_bubble(role, text, intent=None):
-    text = safe_text(text)
+    text = normalize_text(text)
 
     if role == "user":
         st.markdown(
@@ -111,7 +104,7 @@ def render_bubble(role, text, intent=None):
         )
 
     else:
-        # 🎯 Intent badge box
+        # 🎯 Intent badge
         intent_html = ""
         if intent:
             if intent == "greeting":
@@ -139,16 +132,19 @@ def render_bubble(role, text, intent=None):
             </div>
             """
 
+        # Bubble container
         st.markdown(
             f"""
             {intent_html}
             <div class="chat-bubble agent-bubble">
                 <div class="avatar">AutoStream AI</div>
-                {text}
             </div>
             """,
             unsafe_allow_html=True
         )
+
+        # ✅ Render markdown content properly
+        st.markdown(text)
 
 
 # ── Sidebar ─────────────────────────────────────────────────

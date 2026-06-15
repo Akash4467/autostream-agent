@@ -39,6 +39,12 @@ htmlcov/
 # Local lead data (mounted as a volume instead)
 leads.json
 
+# Local vector store / generated data (can be large)
+chroma_db/
+
+# Local Cursor artefacts
+.cursor/
+
 # OS
 .DS_Store
 Thumbs.db
