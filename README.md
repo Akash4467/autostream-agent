@@ -1,156 +1,166 @@
-<<<<<<< HEAD
 # AutoStream AI Agent
-### Social-to-Lead Agentic Workflow — ServiceHive / Inflx Intern Assignment
+### Agentic sales and support workflow demo
 
-A LangGraph-powered conversational AI agent for AutoStream, a fictional SaaS company
-offering automated video editing tools for content creators.
+AutoStream AI Agent is a LangGraph-powered conversational AI project built as a stateful assistant for handling repetitive business queries. It combines structured knowledge retrieval, intent detection, lead collection, and workflow orchestration in a Streamlit-based interface.
 
-The agent handles greetings, answers product questions via RAG, detects high-intent users,
-collects lead details one field at a time, and fires a lead-capture tool — all within a
-stateful, multi-turn conversation. A Streamlit UI with a live lead dashboard is included.
+The project began as a fictional SaaS assistant for AutoStream and now serves as a broader AI sales and support automation demo. It can answer product questions, explain plans and policies, detect user intent, collect lead details step by step, and support real-world deployment scenarios.
 
-## Quick Start (local)
-a
+## Live Demo
+
+The deployed Streamlit app is available at: [http://13.61.188.64:8501](http://13.61.188.64:8501)
+
+## Quick Start (Local)
+
 ```bash
-# 1. Clone
-git clone https://github.com/YOUR_USERNAME/autostream-agent.git
-cd autostream-agent
+# 1. Clone the repository
+ git clone https://github.com/YOUR_USERNAME/autostream-agent.git
+ cd autostream-agent
 
-# 2. Create virtualenv & install deps
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# 2. Create and activate virtual environment
+ python -m venv .venv
+ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 3. Set your LLM API key
-cp .env.example .env
-# Edit .env — add ONE of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY
+# 3. Install dependencies
+ pip install -r requirements.txt
 
-# 4. Launch Streamlit UI
-streamlit run app.py
+# 4. Configure API keys
+ cp .env.example .env
+ # Add ONE of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY
 
-# — or — plain CLI
-python main.py
+# 5. Run the Streamlit app
+ streamlit run app.py
+
+# Optional CLI mode
+ python main.py
 ```
 
----
+Open `http://localhost:8501` in your browser.
 
 ## Quick Start (Docker)
 
 ```bash
-# 1. Set your key
+# 1. Configure environment
 cp .env.example .env
-# Edit .env — add your API key
+# Add your API key
 
-# 2. Build & run
-docker compose up --build
-
-# Open http://localhost:8501
+# 2. Build and run
+ docker compose up --build
 ```
 
 To run in the background:
+
 ```bash
 docker compose up --build -d
-docker compose logs -f          # tail logs
-docker compose down             # stop & remove
+docker compose logs -f
+docker compose down
 ```
 
 To run tests inside Docker:
+
 ```bash
 docker compose run --rm autostream-agent pytest tests/ -v
 ```
 
----
-
 ## Project Structure
 
-```
+```text
 autostream-agent/
-├── app.py                          ← Streamlit UI (main entry point)
-├── main.py                         ← CLI fallback
-│
+├── app.py
+├── main.py
 ├── agent/
 │   ├── __init__.py
-│   ├── graph.py                    ← LangGraph state machine + intent classifier
-│   └── rag.py                      ← KB loader & context builder
-│
+│   ├── graph.py
+│   └── rag.py
 ├── tools/
 │   ├── __init__.py
-│   └── lead_capture.py             ← mock_lead_capture() + LangChain @tool wrapper
-│
+│   └── lead_capture.py
 ├── knowledge_base/
-│   └── autostream_kb.json          ← Pricing, policies, FAQ
-│
+│   └── autostream_kb.json
 ├── tests/
-│   └── test_agent.py               ← Unit tests (21 tests)
-│
-├── leads.json                      ← Auto-created; persists captured leads to disk
-│
-├── Dockerfile                      ← Multi-stage Docker build
-├── docker-compose.yml              ← Compose with named volume for lead persistence
+│   └── test_agent.py
+├── leads.json
+├── Dockerfile
+├── docker-compose.yml
 ├── .dockerignore
 ├── .gitignore
 ├── .env.example
 └── requirements.txt
 ```
 
----
+## Features
+
+- Multi-turn conversational workflow using LangGraph
+- Intent detection for greetings, pricing, support, policies, and FAQs
+- RAG-style response generation using a structured JSON knowledge base
+- Lead collection one field at a time
+- Tool-based lead capture flow
+- Streamlit interface with interactive demo support
+- Docker-ready setup for reproducible deployment
+- Public AWS deployment for live access
 
 ## Architecture
 
 ### Why LangGraph?
 
-LangGraph was chosen over AutoGen because it gives explicit, inspectable control over
-**state transitions** — critical for a lead-qualification flow where the agent must
-remember partial data (e.g. name collected but not email yet) across multiple turns without
-hallucinating or jumping ahead. AutoGen's multi-agent model adds orchestration overhead
-that isn't necessary for a single-agent, linear qualification flow. LangGraph's `StateGraph`
-makes the data flow transparent and straightforward to unit-test.
+LangGraph is used because it provides explicit control over state transitions, which is important for multi-step conversational flows such as lead qualification and support automation. This makes the workflow easier to inspect, test, and extend than a loosely controlled prompt-only approach.
 
 ### How State Is Managed
 
-The agent uses a typed `AgentState` TypedDict with seven fields: the full `messages` list
-(accumulated via LangGraph's `add_messages` reducer), the latest `intent` label, three
-lead-collection fields (`lead_name`, `lead_email`, `lead_platform`), a `lead_captured`
-boolean, and the assigned `lead_id`.
+The agent uses a typed `AgentState` object to maintain the full conversation history, current intent, captured lead fields, and lead status. On each turn, the workflow updates the state, classifies intent, generates a response, and optionally triggers lead capture when enough information has been collected.
 
-Every user turn, the complete state object is passed into the single `respond` node, which:
-1. Appends the new `HumanMessage` and classifies intent via keyword matching (no extra LLM call).
-2. Calls the LLM with the full history + system prompt (KB embedded at startup).
-3. If the LLM emits a `capture_lead` tool call, executes it and stores lead fields.
-4. Runs a follow-up LLM call to produce the final human-facing reply.
-5. Returns updated state.
-
-Because the **full conversation history** travels inside `AgentState.messages`, context is
-retained across 5–6 turns with no external memory store.
+Because the full message history is carried through the graph, the assistant can preserve context across multiple turns without requiring a separate external memory layer for the core demo.
 
 ### RAG Pipeline
 
-`autostream_kb.json` is loaded once at startup and serialised into a compact context block
-injected directly into the LLM system prompt. For this KB size (pricing, policies, FAQ),
-inline injection outperforms a vector-search pipeline in both latency and accuracy — no
-embedding model or vector database is needed.
+The project uses a compact JSON knowledge base for company information, plans, pricing, policies, supported platforms, and FAQs. For this project size, the knowledge base is loaded once and injected into the system workflow rather than requiring a heavier vector database setup.
 
----
+## Knowledge Base
+
+The reference knowledge base stores AutoStream company metadata, pricing plans, support details, cancellation policy, free trial details, supported platforms, and FAQ content.[1]
+
+## URS
+
+### User Requirements Specification
+
+The system is designed to satisfy the following requirements:
+
+- Users should be able to ask questions in natural language.
+- The assistant should identify the intent of the request.
+- The assistant should answer product, plan, and policy questions from the knowledge base.
+- The system should support multi-turn conversation with state retention.
+- The agent should collect lead details in a structured sequence.
+- The application should be accessible through a simple web interface.
+- The project should be deployable locally, through Docker, and on AWS.
+
+## AWS Deployment
+
+The project is deployed on AWS using a publicly accessible Streamlit setup. The application is currently accessible at [http://13.61.188.64:8501](http://13.61.188.64:8501).
+
+### Deployment Flow
+
+1. Prepare the Python environment and project dependencies.
+2. Launch an AWS EC2 instance.
+3. Transfer the project files to the server.
+4. Install dependencies and configure the `.env` file.
+5. Run the Streamlit app on port `8501`.
+6. Allow inbound traffic on port `8501` in the AWS security group.
+7. Access the application via the EC2 public IP.
+
+### Example Run Command
+
+```bash
+streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+```
 
 ## WhatsApp Deployment
 
-To deploy this agent on WhatsApp:
+To extend this project to WhatsApp deployment:
 
-1. **Webhook endpoint** — wrap `chat()` in a Flask/FastAPI handler that accepts `POST /webhook`.
-   WhatsApp sends `entry[].changes[].value.messages[]`; extract `from` (sender's phone) and
-   `text.body` (the message text).
-
-2. **Session persistence** — because HTTP is stateless, serialise `AgentState` to JSON and
-   store it in Redis or SQLite keyed on the sender's phone number. Load at request start,
-   call `chat(user_input, state)`, save the updated state back.
-
-3. **Reply** — call the WhatsApp Cloud API
-   (`POST /v18.0/{phone_number_id}/messages`) with the agent's reply text.
-
-4. **Verification handshake** — handle `GET /webhook` by returning `hub.challenge` when
-   `hub.verify_token` matches your configured secret.
-
----
+1. Wrap the chat workflow in a Flask or FastAPI webhook.
+2. Accept incoming WhatsApp messages through `POST /webhook`.
+3. Persist user session state using Redis or SQLite.
+4. Send agent responses back using the WhatsApp Cloud API.
+5. Handle webhook verification using `hub.challenge` and a verify token.
 
 ## Running Tests
 
@@ -158,230 +168,47 @@ To deploy this agent on WhatsApp:
 # Local
 pytest tests/ -v
 
-# With coverage report
+# With coverage
 pytest tests/ -v --tb=short --cov=agent --cov=tools --cov-report=term-missing
 
-# Inside Docker
+# In Docker
 docker compose run --rm autostream-agent pytest tests/ -v
 ```
-
----
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | One of three | Claude Haiku (claude-haiku-4-5) |
-| `OPENAI_API_KEY`    | One of three | GPT-4o-mini |
-| `GOOGLE_API_KEY`    | One of three | Gemini 1.5 Flash |
+| `ANTHROPIC_API_KEY` | One of three | Claude-based model access |
+| `OPENAI_API_KEY` | One of three | OpenAI model access |
+| `GOOGLE_API_KEY` | One of three | Gemini model access |
 
-Only **one** key is needed. The agent auto-detects the provider in priority order:
-Anthropic → OpenAI → Google.
+Only one provider key is required. The project can be configured based on the available model provider.
 
----
+## Use Cases
 
-## Evaluation Checklist
+- Sales query automation
+- Customer support automation
+- FAQ resolution
+- Product information assistant
+- Lead qualification workflow demo
+- Agentic workflow demonstration for interviews, portfolios, or internships
 
-| Criterion | Where |
-|---|---|
-| Agent reasoning & intent detection | `agent/graph.py` → `classify_intent()` + system prompt |
-| Correct RAG usage | `agent/rag.py` → KB injected into system prompt at startup |
-| Clean state management | `AgentState` TypedDict; full history carried per turn |
-| Proper tool calling | `tools/lead_capture.py` → fires only after all 3 fields confirmed |
-| Code clarity & structure | Typed, documented, one responsibility per file |
-| Real-world deployability | Dockerised with multi-stage build + named volume for persistence |
-=======
-# AutoStream AI Agent
-### Social-to-Lead Agentic Workflow — ServiceHive / Inflx Intern Assignment
+## Future Improvements
 
-A LangGraph-powered conversational AI agent for AutoStream, a fictional SaaS company
-offering automated video editing tools for content creators.
-
-The agent handles greetings, answers product questions via RAG, detects high-intent users,
-collects lead details one field at a time, and fires a lead-capture tool — all within a
-stateful, multi-turn conversation. A Streamlit UI with a live lead dashboard is included.
-
-## Quick Start (local)
-a
-```bash
-# 1. Clone
-git clone https://github.com/YOUR_USERNAME/autostream-agent.git
-cd autostream-agent
-
-# 2. Create virtualenv & install deps
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# 3. Set your LLM API key
-cp .env.example .env
-# Edit .env — add ONE of: ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY
-
-# 4. Launch Streamlit UI
-streamlit run app.py
-
-# — or — plain CLI
-python main.py
-```
-
-Open **http://localhost:8501** in your browser.
-
----
-
-## Quick Start (Docker)
-
-```bash
-# 1. Set your key
-cp .env.example .env
-# Edit .env — add your API key
-
-# 2. Build & run
-docker compose up --build
-
-# Open http://localhost:8501
-```
-
-To run in the background:
-```bash
-docker compose up --build -d
-docker compose logs -f          # tail logs
-docker compose down             # stop & remove
-```
-
-To run tests inside Docker:
-```bash
-docker compose run --rm autostream-agent pytest tests/ -v
-```
-
----
-
-## Project Structure
-
-```
-autostream-agent/
-├── app.py                          ← Streamlit UI (main entry point)
-├── main.py                         ← CLI fallback
-│
-├── agent/
-│   ├── __init__.py
-│   ├── graph.py                    ← LangGraph state machine + intent classifier
-│   └── rag.py                      ← KB loader & context builder
-│
-├── tools/
-│   ├── __init__.py
-│   └── lead_capture.py             ← mock_lead_capture() + LangChain @tool wrapper
-│
-├── knowledge_base/
-│   └── autostream_kb.json          ← Pricing, policies, FAQ
-│
-├── tests/
-│   └── test_agent.py               ← Unit tests (21 tests)
-│
-├── leads.json                      ← Auto-created; persists captured leads to disk
-│
-├── Dockerfile                      ← Multi-stage Docker build
-├── docker-compose.yml              ← Compose with named volume for lead persistence
-├── .dockerignore
-├── .gitignore
-├── .env.example
-└── requirements.txt
-```
-
----
-
-## Architecture (~200 words)
-
-### Why LangGraph?
-
-LangGraph was chosen over AutoGen because it gives explicit, inspectable control over
-**state transitions** — critical for a lead-qualification flow where the agent must
-remember partial data (e.g. name collected but not email yet) across multiple turns without
-hallucinating or jumping ahead. AutoGen's multi-agent model adds orchestration overhead
-that isn't necessary for a single-agent, linear qualification flow. LangGraph's `StateGraph`
-makes the data flow transparent and straightforward to unit-test.
-
-### How State Is Managed
-
-The agent uses a typed `AgentState` TypedDict with seven fields: the full `messages` list
-(accumulated via LangGraph's `add_messages` reducer), the latest `intent` label, three
-lead-collection fields (`lead_name`, `lead_email`, `lead_platform`), a `lead_captured`
-boolean, and the assigned `lead_id`.
-
-Every user turn, the complete state object is passed into the single `respond` node, which:
-1. Appends the new `HumanMessage` and classifies intent via keyword matching (no extra LLM call).
-2. Calls the LLM with the full history + system prompt (KB embedded at startup).
-3. If the LLM emits a `capture_lead` tool call, executes it and stores lead fields.
-4. Runs a follow-up LLM call to produce the final human-facing reply.
-5. Returns updated state.
-
-Because the **full conversation history** travels inside `AgentState.messages`, context is
-retained across 5–6 turns with no external memory store.
-
-### RAG Pipeline
-
-`autostream_kb.json` is loaded once at startup and serialised into a compact context block
-injected directly into the LLM system prompt. For this KB size (pricing, policies, FAQ),
-inline injection outperforms a vector-search pipeline in both latency and accuracy — no
-embedding model or vector database is needed.
-
----
-
-## WhatsApp Deployment
-
-To deploy this agent on WhatsApp:
-
-1. **Webhook endpoint** — wrap `chat()` in a Flask/FastAPI handler that accepts `POST /webhook`.
-   WhatsApp sends `entry[].changes[].value.messages[]`; extract `from` (sender's phone) and
-   `text.body` (the message text).
-
-2. **Session persistence** — because HTTP is stateless, serialise `AgentState` to JSON and
-   store it in Redis or SQLite keyed on the sender's phone number. Load at request start,
-   call `chat(user_input, state)`, save the updated state back.
-
-3. **Reply** — call the WhatsApp Cloud API
-   (`POST /v18.0/{phone_number_id}/messages`) with the agent's reply text.
-
-4. **Verification handshake** — handle `GET /webhook` by returning `hub.challenge` when
-   `hub.verify_token` matches your configured secret.
-
----
-
-## Running Tests
-
-```bash
-# Local
-pytest tests/ -v
-
-# With coverage report
-pytest tests/ -v --tb=short --cov=agent --cov=tools --cov-report=term-missing
-
-# Inside Docker
-docker compose run --rm autostream-agent pytest tests/ -v
-```
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | One of three | Claude Haiku (claude-haiku-4-5) |
-| `OPENAI_API_KEY`    | One of three | GPT-4o-mini |
-| `GOOGLE_API_KEY`    | One of three | Gemini 1.5 Flash |
-
-Only **one** key is needed. The agent auto-detects the provider in priority order:
-Anthropic → OpenAI → Google.
-
----
+- Replace static KB injection with retrieval pipelines when the dataset grows
+- Add authentication and admin management
+- Expand analytics for lead tracking and interaction monitoring
+- Improve fallback handling for ambiguous intent
+- Integrate WhatsApp or CRM workflows in production
 
 ## Evaluation Checklist
 
-| Criterion | Where |
+| Criterion | Implementation Area |
 |---|---|
-| Agent reasoning & intent detection | `agent/graph.py` → `classify_intent()` + system prompt |
-| Correct RAG usage | `agent/rag.py` → KB injected into system prompt at startup |
-| Clean state management | `AgentState` TypedDict; full history carried per turn |
-| Proper tool calling | `tools/lead_capture.py` → fires only after all 3 fields confirmed |
-| Code clarity & structure | Typed, documented, one responsibility per file |
-| Real-world deployability | Dockerised with multi-stage build + named volume for persistence |
->>>>>>> b65d7e9 (Refactor:refactored the code)
+| Agent reasoning and intent detection | `agent/graph.py` |
+| Knowledge-based response handling | `agent/rag.py` and `autostream_kb.json` |
+| Stateful workflow management | `AgentState` and LangGraph flow |
+| Proper tool calling | `tools/lead_capture.py` |
+| Code clarity and modularity | Separated `agent`, `tools`, and UI structure |
+| Real-world deployability | Docker setup and AWS-hosted Streamlit deployment |
