@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_core.tools import tool
+
+# Basic email format: something@something.something
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # Write leads.json to /data inside the container (mounted volume) if it exists,
 # otherwise fall back to the project root so local runs work out of the box.
@@ -96,8 +100,28 @@ def mock_lead_capture(name: str, email: str, platform: str) -> dict:
 
     Returns:
         dict with success flag, lead_id, message, and full lead record.
+        On validation failure, success is False and message describes the problem.
     """
     global _captured_leads, _last_disk_refresh
+
+    # --- Input validation ---
+    name = (name or "").strip()
+    email = (email or "").strip()
+    platform = (platform or "").strip()
+
+    if not name:
+        return {"success": False, "lead_id": None, "message": "Lead capture failed: name is required.", "lead": None}
+
+    if not email or not _EMAIL_RE.match(email):
+        return {
+            "success": False,
+            "lead_id": None,
+            "message": f"Lead capture failed: '{email}' is not a valid email address.",
+            "lead": None,
+        }
+
+    if not platform:
+        return {"success": False, "lead_id": None, "message": "Lead capture failed: platform is required.", "lead": None}
 
     # Hydrate from disk on first call so we maintain correct sequential IDs
     if not _captured_leads:
@@ -109,7 +133,7 @@ def mock_lead_capture(name: str, email: str, platform: str) -> dict:
         "name": name,
         "email": email,
         "platform": platform,
-        "captured_at": datetime.utcnow().isoformat() + "Z",
+        "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "status": "new",
     }
     _captured_leads.append(lead)
@@ -155,5 +179,7 @@ def capture_lead(name: str, email: str, platform: str) -> str:
         Plain-text confirmation message.
     """
     result = mock_lead_capture(name=name, email=email, platform=platform)
-    return result["message"] if result["success"] else "Lead capture failed — please try again."
+    # Return the message in both success and failure cases so the LLM can
+    # relay the specific validation error back to the user.
+    return result["message"]
 

@@ -105,29 +105,55 @@ class TestLeadCapture:
 # ── Intent classifier ─────────────────────────────────────────────────────────
 
 class TestIntentClassifier:
-    # Greetings
-    def test_hi(self):      assert classify_intent("Hi there!")         == "greeting"
-    def test_hello(self):   assert classify_intent("Hello!")            == "greeting"
-    def test_hey(self):     assert classify_intent("Hey, can you help") == "greeting"
+    # ── Greetings ────────────────────────────────────────────────────────────
+    def test_hi(self):      assert classify_intent("Hi there!")    == "greeting"
+    def test_hello(self):   assert classify_intent("Hello!")        == "greeting"
+    # Pure greeting — no other keywords present
+    def test_hey(self):     assert classify_intent("Hey there!")    == "greeting"
 
-    # Product inquiry
+    # ── Pricing inquiry ──────────────────────────────────────────────────────
+    # "pricing" and "plans" are pricing keywords → pricing_inquiry
     def test_pricing_question(self):
-        assert classify_intent("What are your pricing plans?")        == "product_inquiry"
+        assert classify_intent("What are your pricing plans?")         == "pricing_inquiry"
+    # "plan" is a pricing keyword → pricing_inquiry
     def test_feature_question(self):
-        assert classify_intent("Tell me about the Pro plan features") == "product_inquiry"
-    def test_refund_question(self):
-        assert classify_intent("What is your refund policy?")         == "product_inquiry"
+        assert classify_intent("Tell me about the Pro plan features")  == "pricing_inquiry"
 
-    # High intent
+    # ── Support ──────────────────────────────────────────────────────────────
+    # "refund" is a support keyword → support
+    def test_refund_question(self):
+        assert classify_intent("What is your refund policy?")          == "support"
+    # "help" is a support keyword even when combined with a greeting
+    def test_help_request(self):
+        assert classify_intent("Hey, can you help me?")                == "support"
+    # "cancel" → support
+    def test_cancel(self):
+        assert classify_intent("I want to cancel my subscription")     == "support"
+
+    # ── High intent ──────────────────────────────────────────────────────────
     def test_sign_up(self):
-        assert classify_intent("I want to sign up for the Pro plan")  == "high_intent"
+        assert classify_intent("I want to sign up for the Pro plan")   == "high_intent"
     def test_buy(self):
-        assert classify_intent("I'd like to buy the Pro plan")        == "high_intent"
+        assert classify_intent("I'd like to buy the Pro plan")         == "high_intent"
     def test_get_started(self):
-        assert classify_intent("I'm ready to get started")            == "high_intent"
+        assert classify_intent("I'm ready to get started")             == "high_intent"
     def test_sounds_good(self):
-        assert classify_intent("sounds good, let's go")               == "high_intent"
+        assert classify_intent("sounds good, let's go")                == "high_intent"
     def test_subscribe(self):
         assert classify_intent("I want to subscribe")                  == "high_intent"
     def test_upgrade(self):
         assert classify_intent("I want to upgrade to Pro")             == "high_intent"
+
+    # ── Lead collection ──────────────────────────────────────────────────────
+    def test_email_provided(self):
+        assert classify_intent("my email is alex@example.com")         == "lead_collection"
+    def test_name_provided(self):
+        assert classify_intent("my name is Alex")                      == "lead_collection"
+    def test_platform_provided(self):
+        assert classify_intent("I mainly post on YouTube")             == "lead_collection"
+
+    # ── General product inquiry (fallback) ───────────────────────────────────
+    def test_generic_question(self):
+        assert classify_intent("What does AutoStream do?")             == "product_inquiry"
+    def test_feature_no_plan_keyword(self):
+        assert classify_intent("What features do you have?")           == "product_inquiry"

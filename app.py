@@ -112,7 +112,13 @@ def render_bubble(role, text, intent=None):
             elif intent == "product_inquiry":
                 label, color = "Product Inquiry", "#2196f3"
             elif intent == "high_intent":
-                label, color = "High Intent", "#ff5252"
+                label, color = "High Intent 🔥", "#ff5252"
+            elif intent == "pricing_inquiry":
+                label, color = "Pricing", "#ff9800"
+            elif intent == "support":
+                label, color = "Support", "#9c27b0"
+            elif intent == "lead_collection":
+                label, color = "Collecting Info", "#00bcd4"
             else:
                 label, color = intent, "#999"
 
