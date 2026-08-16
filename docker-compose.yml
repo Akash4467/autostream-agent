@@ -8,31 +8,15 @@ services:
       target: runtime
     container_name: autostream-agent
     image: autostream-agent:latest
-
-    # ── Environment ────────────────────────────────────────────────────────────
-    # Pass exactly ONE LLM key. The agent auto-detects which one is set.
-    # Option A — use an .env file (recommended):
     env_file:
       - .env
-    # Option B — inline (uncomment and replace):
-    # environment:
-    #   - ANTHROPIC_API_KEY=your_key_here
-    #   - OPENAI_API_KEY=your_key_here
-    #   - GOOGLE_API_KEY=your_key_here
-
-    # ── Ports ──────────────────────────────────────────────────────────────────
     ports:
       - "8501:8501"
-
-    # ── Volumes ────────────────────────────────────────────────────────────────
-    # Persists leads.json between container restarts
     volumes:
       - leads_data:/data
 
-    # ── Restart policy ─────────────────────────────────────────────────────────
     restart: unless-stopped
 
-    # ── Health check (mirrors Dockerfile HEALTHCHECK) ──────────────────────────
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
@@ -41,14 +25,6 @@ services:
       start_period: 25s
       retries: 3
 
-    # ── Resource limits (optional — uncomment for production) ──────────────────
-    # deploy:
-    #   resources:
-    #     limits:
-    #       cpus: "1.0"
-    #       memory: 512M
-
-# ── Named volume for lead persistence ─────────────────────────────────────────
 volumes:
   leads_data:
     driver: local
